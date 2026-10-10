@@ -331,6 +331,9 @@ def fetch_pinned_spdx() -> dict[str, Any]:
 
 def read_policy(rpc: Rpc, address: str, policy_id: str) -> dict[str, Any]:
     value = gen_call_read(rpc, address, "get_policy", [policy_id])
+    # Only the contract's empty-string sentinel means absent; RPC errors must propagate.
+    if value == "":
+        return {"state": "NOT_FOUND"}
     return parse_json_string(value)
 
 
@@ -652,10 +655,7 @@ class LiveRun:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             policy_id = intent_argument("*.policy_created.intent.json", 0) or f"LP-V11-POLICY-{stamp}"
             policy_args = [policy_id, "LicenseProof declared proprietary SaaS policy", True, True, False, True, False, False, "PROPRIETARY", "HOSTED_ONLY", "1.1.0"]
-            try:
-                policy = read_policy(self.rpc, address, policy_id)
-            except Exception:
-                policy = {}
+            policy = read_policy(self.rpc, address, policy_id)
             policy_create = None
             policy_freeze = None
             if policy.get("state") == "NOT_FOUND":

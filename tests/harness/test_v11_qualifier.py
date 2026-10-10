@@ -8,6 +8,7 @@ import pytest
 
 from conftest import semantic
 from scripts import live_qualification_v11 as candidate
+from scripts.studio_live_qualification import QualificationError
 
 
 def test_exact_v11_semantic_preview_boundary():
@@ -33,3 +34,26 @@ def test_no_authorization_means_no_signer_loaded(monkeypatch):
     monkeypatch.setattr(candidate, "LiveRun", lambda: (_ for _ in ()).throw(AssertionError("signer touched")))
     with pytest.raises(SystemExit, match="Missing explicit v1.1 approval"):
         candidate.main()
+
+
+@pytest.mark.parametrize("value", ["", {"state": "DRAFT"}, {"state": "FROZEN"}])
+def test_policy_readback_distinguishes_absence(monkeypatch, value):
+    monkeypatch.setattr(candidate, "gen_call_read", lambda *args: value)
+    assert candidate.read_policy(None, "contract", "policy") == (
+        {"state": "NOT_FOUND"} if value == "" else value
+    )
+
+
+@pytest.mark.parametrize("value", ["not json", "null", "[]", None])
+def test_malformed_policy_readback_is_not_absence(monkeypatch, value):
+    monkeypatch.setattr(candidate, "gen_call_read", lambda *args: value)
+    with pytest.raises(QualificationError):
+        candidate.read_policy(None, "contract", "policy")
+
+
+def test_policy_rpc_failure_propagates(monkeypatch):
+    def failed_read(*args):
+        raise RuntimeError("RPC unavailable")
+    monkeypatch.setattr(candidate, "gen_call_read", failed_read)
+    with pytest.raises(RuntimeError, match="RPC unavailable"):
+        candidate.read_policy(None, "contract", "policy")
